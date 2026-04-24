@@ -239,6 +239,94 @@ FIELD_MAP: Dict[str, List[str]] = {
     "platform"      : ["platform", "平台"],
 }
 
+# 时间列候选名（与 FIELD_MAP["created_at"] 保持一致，供 apply_date_filter 直接定位原始列）
+_TIME_COL_CANDIDATES = ["time", "create_time", "note_create_time", "发布时间", "created_at"]
+
+# 默认时间过滤截止日期（仅保留此日期之后的帖子）
+DEFAULT_SINCE_DATE = "2024-01-01"
+
+
+def _parse_any_timestamp(val: Any) -> Optional[datetime]:
+    """
+    将原始时间值统一解析为 datetime。
+    支持：
+      - Unix 时间戳（秒级 / 毫秒级，整数或浮点）
+      - 常见日期字符串（"YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DD" 等）
+    解析失败时返回 None（调用方决定是否保留该行）。
+    """
+    if pd.isna(val) or val == "" or val is None:
+        return None
+    # 数值型时间戳
+    try:
+        ts = float(val)
+        if ts > 1e12:      # 毫秒级，转为秒
+            ts /= 1000
+        if 0 < ts < 2e9:   # 合理范围（约 1970-2033 年）
+            return datetime.fromtimestamp(ts)
+    except (ValueError, TypeError, OSError):
+        pass
+    # 字符串型日期
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d",
+        "%Y年%m月%d日",
+    ):
+        try:
+            return datetime.strptime(str(val)[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def apply_date_filter(df: pd.DataFrame, since: str) -> pd.DataFrame:
+    """
+    删除发布时间早于 since（格式 YYYY-MM-DD）的帖子。
+
+    策略：
+    - 自动定位 DataFrame 中的时间列（参照 _TIME_COL_CANDIDATES）
+    - 无法识别时间列 → 打印警告，不过滤（宁放过勿误删）
+    - 时间值无法解析的行 → 保留（宁放过勿误删）
+    - 发布时间 < since → 删除
+    """
+    since_dt = datetime.strptime(since, "%Y-%m-%d")
+
+    # 定位时间列
+    time_col: Optional[str] = None
+    for candidate in _TIME_COL_CANDIDATES:
+        if candidate in df.columns:
+            time_col = candidate
+            break
+
+    if time_col is None:
+        print(
+            f"  [时间过滤] ⚠ 未找到时间列（候选：{_TIME_COL_CANDIDATES}），"
+            f"跳过过滤，保留全部 {len(df)} 条"
+        )
+        return df
+
+    before   = len(df)
+    parsed   = df[time_col].apply(_parse_any_timestamp)
+    parseable = parsed.notna()
+
+    # 保留：无法解析 OR 时间 >= since_dt
+    keep = (~parseable) | (parsed >= since_dt)
+    result = df[keep].reset_index(drop=True)
+
+    dropped      = before - len(result)
+    unparseable  = (~parseable).sum()
+
+    print(
+        f"  [时间过滤] since={since}（列：{time_col}） → "
+        f"保留 {len(result)} 条，剔除 {dropped} 条过期帖子"
+    )
+    if unparseable > 0:
+        print(f"  [时间过滤] ⚠ {unparseable} 条时间无法解析，已保留（宁放过勿误删）")
+
+    return result
+
 
 def _try_read_csv(path: Path) -> Optional[pd.DataFrame]:
     """尝试多种编码读取 CSV，失败返回 None。"""
@@ -319,6 +407,13 @@ def normalize_row(row: pd.Series) -> Dict[str, Any]:
             else:
                 result[std_name] = None
 
+    # ── 派生字段：post_date（YYYY-MM-DD）─────────────────────
+    # 从 created_at 原始值解析出标准化日期字符串，供前端时序图表使用。
+    # 存放在帖子 dict 顶层，与 llm_analysis 并列。
+    raw_ts = result.get("created_at")
+    dt_obj = _parse_any_timestamp(raw_ts)
+    result["post_date"] = dt_obj.strftime("%Y-%m-%d") if dt_obj else ""
+
     return result
 
 
@@ -377,6 +472,10 @@ PLANNER_USER_TEMPLATE = """\
   "output_schema"    — 期望模型输出的每个 JSON 字段定义（字典），格式：
                          {{ "字段名": {{ "type": "string|number|array|boolean", "description": "含义与取值说明" }} }}
                        字段设计原则：紧扣调研目标，避免冗余；枚举型字段须列出合法值。
+
+                       ⚠️ 强制要求：output_schema 中必须包含以下字段，不可省略：
+                         "post_date": {{"type": "string", "description": "帖子发布日期，格式 YYYY-MM-DD，直接从输入的 post_date 字段透传，用于时序趋势分析"}}
+                       （该字段由系统预计算后作为变量传入，模型只需原样输出即可，无需推断）
 
   "schema_example"   — 符合 output_schema 的一条完整示例输出（字典）。
 
@@ -515,6 +614,7 @@ def build_row_prompt(prompt_cfg: Dict[str, Any], row: Dict[str, Any]) -> str:
         "likes"         : row.get("likes",          0),
         "collects"      : row.get("collects",       0),
         "comments_count": row.get("comments_count", 0),
+        "post_date"     : row.get("post_date",      ""),   # YYYY-MM-DD，由 normalize_row 预计算
     })
 
 
@@ -684,6 +784,7 @@ async def run_pipeline(
     skip_plan   : bool,
     dry_run     : bool,
     limit       : Optional[int],
+    since_date  : str = DEFAULT_SINCE_DATE,
 ) -> None:
     """
     完整的两阶段流水线入口（异步）。
@@ -696,7 +797,7 @@ async def run_pipeline(
     # ── 读取原始数据 ──────────────────────────────────────
     print(f"\n{'═'*55}")
     print(f"  项目：{project_name}")
-    print(f"  模型：{model}  并发：{concurrency}")
+    print(f"  模型：{model}  并发：{concurrency}  时效截止：{since_date}")
     print(f"{'═'*55}\n")
     print("📂 读取原始 CSV 数据…")
 
@@ -706,6 +807,16 @@ async def run_pipeline(
     if df.empty:
         print("\n[退出] raw_data/ 下没有可读取的数据。")
         print("  请先将 MediaCrawler 输出的 CSV 文件放入该目录，再重新运行。")
+        sys.exit(0)
+
+    # ── 时效性过滤：剔除 since_date 之前的过期帖子 ──────────
+    # 注：MediaCrawler 不提供时间范围 CLI 参数，过滤在此层完成。
+    print(f"\n🗓  应用时效性过滤（仅保留 {since_date} 之后的帖子）…")
+    df = apply_date_filter(df, since_date)
+
+    if df.empty:
+        print(f"\n[退出] 时效性过滤后无剩余数据（所有帖子均早于 {since_date}）。")
+        print("  建议：调整 --since 参数或重新抓取更新的数据。")
         sys.exit(0)
 
     # 可选：限制处理条数（调试用）
@@ -780,6 +891,7 @@ async def run_pipeline(
             "goal_summary"   : goal_text.splitlines()[0].replace("【调研项目】","").strip(),
             "model"          : model,
             "processed_at"   : datetime.now().isoformat(),
+            "since_date"     : since_date,
             "total_raw"      : len(df),
             "total_analyzed" : len(analyzed),
             "success"        : success,
@@ -876,6 +988,15 @@ def main() -> None:
         default=None,
         help="只处理前 N 条数据（调试用；默认处理全部）",
     )
+    parser.add_argument(
+        "--since",
+        default=DEFAULT_SINCE_DATE,
+        help=(
+            f"时效性截止日期（YYYY-MM-DD），仅保留此日期之后发布的帖子。"
+            f"默认：{DEFAULT_SINCE_DATE}。"
+            "注：MediaCrawler 不支持时间范围 CLI 参数，过滤在本脚本的数据加载层完成。"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -887,6 +1008,7 @@ def main() -> None:
             skip_plan    = args.skip_plan,
             dry_run      = args.dry_run,
             limit        = args.limit,
+            since_date   = args.since,
         )
     )
 

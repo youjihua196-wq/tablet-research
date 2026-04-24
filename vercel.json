@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm --prefix dashboard-web run build",
+  "outputDirectory": "dashboard-web/.next",
+  "installCommand": "npm --prefix dashboard-web install",
+  "framework": "nextjs",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/$1" }
+  ]
+}

@@ -48,6 +48,7 @@ DRY_RUN=false
 MODEL="deepseek-chat"
 CONCURRENCY=3
 NO_PUSH=false
+SINCE_DATE="2024-01-01"  # 时效性截止日期，透传至 crawl.py + clean_data.py
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -60,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --model)       MODEL="$2"; shift ;;
     --concurrency) CONCURRENCY="$2"; shift ;;
     --no-push)     NO_PUSH=true ;;
+    --since)       SINCE_DATE="$2"; shift ;;
     --*)           warn "未知选项：$1" ;;
     *)
       if [[ -z "$PROJECT" ]]; then
@@ -90,7 +92,7 @@ fi
 
 banner "Aurora Research · 全链路发布"
 echo -e "  项目：${BOLD}${PROJECTS[*]}${RESET}"
-echo -e "  模型：$MODEL  并发：$CONCURRENCY"
+echo -e "  模型：$MODEL  并发：$CONCURRENCY  时效截止：$SINCE_DATE"
 echo -e "  抓取：$([ $DO_CRAWL = true ] && echo '是 ('"$PLATFORM"')' || echo '否（跳过）')"
 echo -e "  推送：$([ $NO_PUSH = true ] && echo '否（--no-push）' || echo '是')"
 echo ""
@@ -132,9 +134,10 @@ for PROJECT in "${PROJECTS[@]}"; do
 
     echo "  命令：${CRAWL_CMD[*]}"
     "$PYTHON" "$DATA_ENGINE/crawl.py" \
-      --project "$PROJECT" \
+      --project  "$PROJECT" \
       --platform "$PLATFORM" \
-      --count "$CRAWL_COUNT" \
+      --count    "$CRAWL_COUNT" \
+      --since    "$SINCE_DATE" \
       ${KEYWORDS:+--keywords "$KEYWORDS"}
     success "抓取完成"
   else
@@ -142,11 +145,12 @@ for PROJECT in "${PROJECTS[@]}"; do
   fi
 
   # ── Step 2：AI 清洗 ─────────────────────────────────────────
-  info "Step 2/3  AI 两阶段清洗（Planner → Executor）…"
+  info "Step 2/3  AI 两阶段清洗（Planner → Executor，时效截止 $SINCE_DATE）…"
   CLEAN_CMD=("$PYTHON" "$DATA_ENGINE/clean_data.py"
     "--project"     "$PROJECT"
     "--model"       "$MODEL"
-    "--concurrency" "$CONCURRENCY")
+    "--concurrency" "$CONCURRENCY"
+    "--since"       "$SINCE_DATE")
   [[ $SKIP_PLAN = true ]] && CLEAN_CMD+=("--skip-plan")
   [[ $DRY_RUN   = true ]] && CLEAN_CMD+=("--dry-run")
 
