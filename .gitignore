@@ -1,0 +1,37 @@
+# ── macOS ──────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Python ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv
+venv/
+*.egg-info/
+
+# ── Data_Engine: raw crawl outputs (large, not for git) ────────
+Data_Engine/Projects/*/raw_data/
+Data_Engine/Projects/*/generated_prompt.txt
+
+# latest.json is intentionally INCLUDED (synced by publish.sh)
+# — do NOT add Data_Engine/Projects/*/clean_data/ here
+
+# ── MediaCrawler: local runtime files ──────────────────────────
+MediaCrawler-main/.env
+MediaCrawler-main/data/
+MediaCrawler-main/logs/
+MediaCrawler-main/__pycache__/
+
+# ── Next.js / Node ─────────────────────────────────────────────
+dashboard-web/node_modules/
+dashboard-web/.next/
+dashboard-web/.vercel
+dashboard-web/out/
+dashboard-web/build/
+dashboard-web/.env*.local
+dashboard-web/npm-debug.log*
+dashboard-web/*.tsbuildinfo
+dashboard-web/next-env.d.ts

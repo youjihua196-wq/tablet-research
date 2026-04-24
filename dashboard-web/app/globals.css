@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════
+   Aurora Design System — CSS custom properties & utilities
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Core palette ───────────────────────────────────── */
+  --aurora-teal:   #00c9a7;
+  --aurora-cyan:   #22d3ee;
+  --aurora-blue:   #60a5fa;
+  --aurora-violet: #818cf8;
+  --aurora-purple: #a78bfa;
+  --aurora-rose:   #f472b6;
+  --aurora-pink:   #fb7185;
+
+  /* ── Ink / background ───────────────────────────────── */
+  --ink-base:    #060b18;
+  --ink-surface: #0c1525;
+  --ink-raised:  #111e35;
+  --ink-border:  #1a2e4a;
+  --ink-glow:    #1e3a5f;
+
+  /* ── Text ───────────────────────────────────────────── */
+  --text-primary: #e0e8ff;
+  --text-muted:   #6b82ab;
+  --text-faint:   #39527a;
+
+  /* ── Gradient definitions ────────────────────────────  */
+  --grad-aurora:       linear-gradient(135deg, var(--aurora-teal), var(--aurora-violet), var(--aurora-rose));
+  --grad-aurora-cool:  linear-gradient(135deg, var(--aurora-teal), var(--aurora-cyan), var(--aurora-blue));
+  --grad-aurora-warm:  linear-gradient(135deg, var(--aurora-violet), var(--aurora-purple), var(--aurora-rose));
+  --grad-card-border:  linear-gradient(135deg, rgba(0,201,167,0.5), rgba(129,140,248,0.4), rgba(244,114,182,0.3));
+}
+
+/* ── Base styles ────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--ink-base);
+  color: var(--text-primary);
+  font-family: "Inter", "PingFang SC", "Noto Sans SC", -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ── Aurora ambient glow (fixed overlay, pointer-events none) ─── */
+.aurora-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform;
+  animation: aurora-drift 22s ease-in-out infinite;
+}
+
+.aurora-blob--teal {
+  width: 650px;
+  height: 550px;
+  top: -180px;
+  left: -180px;
+  background: radial-gradient(ellipse, rgba(0,201,167,0.09) 0%, transparent 70%);
+  animation-duration: 22s;
+}
+
+.aurora-blob--purple {
+  width: 700px;
+  height: 600px;
+  bottom: -200px;
+  right: -200px;
+  background: radial-gradient(ellipse, rgba(167,139,250,0.08) 0%, transparent 70%);
+  animation-duration: 28s;
+  animation-direction: reverse;
+}
+
+.aurora-blob--rose {
+  width: 400px;
+  height: 350px;
+  top: 40%;
+  left: 60%;
+  background: radial-gradient(ellipse, rgba(244,114,182,0.05) 0%, transparent 70%);
+  animation-duration: 35s;
+}
+
+/* ── Gradient text ──────────────────────────────────────── */
+.text-aurora {
+  background: var(--grad-aurora);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-aurora-cool {
+  background: var(--grad-aurora-cool);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Gradient border card ────────────────────────────────── */
+/* Usage: wrap content in .aurora-card-border > .aurora-card-inner */
+.aurora-card-border {
+  background: var(--grad-card-border);
+  padding: 1px;
+  border-radius: 16px;
+}
+
+.aurora-card-inner {
+  background: var(--ink-surface);
+  border-radius: 15px;
+  height: 100%;
+}
+
+/* ── Glow focus ring ────────────────────────────────────── */
+.aurora-ring {
+  box-shadow: 0 0 0 1px rgba(0,201,167,0.4), 0 0 20px rgba(0,201,167,0.1);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--ink-surface); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--aurora-teal), var(--aurora-purple));
+  border-radius: 3px;
+}
+
+/* ── Recharts overrides ──────────────────────────────────── */
+.recharts-tooltip-wrapper { outline: none !important; }
+.recharts-default-legend { margin-top: 8px !important; }
